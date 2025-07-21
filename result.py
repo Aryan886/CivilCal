@@ -32,25 +32,6 @@ def theLoop(length, results, choice, clear_span, bl1, bl2, d, beam_num):
         print(f"Total length for {quantity} bars: {total_len:.2f}")
         return
     
-"""
-def seg_by_d(results):
-    summary = defaultdict(list)
-    for entry in results:
-        summary[entry["diameter"]].append(entry)
-
-    for d, entries in summary.items():
-        headers = ["Beam No.", "Clear Span", "Type", "Bend Len1", "Bend Len2", "Qty", "Cutting Length"]
-        show_custom_results(
-            entries,
-            headers,
-            lambda e: [
-                e["beam no."], e["clear span"], e["type"],
-                e["bend length1"], e["bend length2"], e["quantity"],
-                f"{e['length per bar']:.2f}"
-            ],
-            title=f"Bar Diameter: {d}"
-        )
-"""
 
 def group_by_field(data, group_key, field_order, field_names=None, title_prefix=None):
     """
@@ -82,3 +63,23 @@ def group_by_field(data, group_key, field_order, field_names=None, title_prefix=
                 row.append(val)
             table.append(row)
         print(tabulate(table, headers=headers, tablefmt="fancy_grid"))
+
+"""
+def seg_by_d(results):
+    summary = defaultdict(list)
+    for entry in results:
+        summary[entry["diameter"]].append(entry)
+
+    for d, entries in summary.items():
+        headers = ["Beam No.", "Clear Span", "Type", "Bend Len1", "Bend Len2", "Qty", "Cutting Length"]
+        show_custom_results(
+            entries,
+            headers,
+            lambda e: [
+                e["beam no."], e["clear span"], e["type"],
+                e["bend length1"], e["bend length2"], e["quantity"],
+                f"{e['length per bar']:.2f}"
+            ],
+            title=f"Bar Diameter: {d}"
+        )
+"""
