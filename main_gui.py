@@ -11,6 +11,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
+from stirrups import different_spacing, same_spacing
+import math
 
 class TopSteelInput(QWidget):
     def __init__(self, parent=None):
@@ -611,10 +613,12 @@ class MainWindow(QMainWindow):
 
         # Results Table
         self.results_table = QTableWidget(0, 7)
+        """
         self.results_table.setHorizontalHeaderLabels([
             "Beam Type", "Beam No.", "Bend len 1", "Bend len 2", "Quantity", "Cutting-length (per bar)", "Weight"
         ])
         self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        """
         center_layout.addWidget(QLabel("Results so far:"))
         center_layout.addWidget(self.results_table)
 
@@ -639,76 +643,149 @@ class MainWindow(QMainWindow):
     def switch_input_area(self, index):
         self.input_stack.setCurrentIndex(index)
 
+
+
     def add_result_to_table(self, _):
         """
-        Refresh the results table, grouped by bar diameter.
+        Refresh the results table, grouped by type first, then by diameter.
         """
+        def get_beam_number(res):
+            """Helper function to get beam number from result dict with various key names"""
+            return str(res.get("beam no.", "") or res.get("beam_num", "") or res.get("beam num", "") or "")
+        
         self.results_table.setRowCount(0)
-        # Group results by diameter if present, else by type
-        grouped = defaultdict(list)
+        
+        # Group results by type first
+        type_groups = defaultdict(list)
         for res in self.results:
-            if 'd' in res:
-                grouped[res["d"]].append(res)
-            elif 'diameter' in res:
-                grouped[res["diameter"]].append(res)
-            else:
-                grouped[res["type"]].append(res)
-        for key in sorted(grouped.keys()):
+            if res.get("type", "").endswith("legged"):
+                type_groups["Stirrups"].append(res)
+            elif res.get("type") == "Top Steel":
+                type_groups["Top Steel"].append(res)
+            elif res.get("type") == "Bottom Steel":
+                type_groups["Bottom Steel"].append(res)
+            elif res.get("type") == "Cantilever":
+                type_groups["Cantilever"].append(res)
+            elif res.get("type") == "One-way":
+                type_groups["Slab"].append(res)
+        
+        # Set default headers (will be updated per section)
+        default_headers = ["Beam Type", "Beam No.", "Bend len 1", "Bend len 2", "Quantity", "CL(per bar)", "Weight"]
+        self.results_table.setColumnCount(7)
+        self.results_table.setHorizontalHeaderLabels(default_headers)
+        
+        # Process each type group
+        for type_name in sorted(type_groups.keys()):
+            results_of_type = type_groups[type_name]
+            
+            # Add main type header
             row = self.results_table.rowCount()
             self.results_table.insertRow(row)
-            header_item = QTableWidgetItem(f"            Bar Diameter: {key} mm  ")
-            header_item.setFlags(header_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            header_item.setBackground(QColor(0, 0, 0))
-            self.results_table.setItem(row, 0, header_item)
+            type_header = QTableWidgetItem(f"═══════════ {type_name.upper()} ═══════════")
+            type_header.setFlags(type_header.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            #type_header.setBackground(QColor(70, 130, 180))  # Steel blue
+            #type_header.setForeground(QColor(255, 255, 255))  # White text
+            self.results_table.setItem(row, 0, type_header)
             self.results_table.setSpan(row, 0, 1, self.results_table.columnCount())
-            for res in grouped[key]:
+            
+            # Add headers row for this type
+            row = self.results_table.rowCount()
+            self.results_table.insertRow(row)
+            
+            if type_name == "Stirrups":
+                headers = ["Type", "Beam No.", "Spacing Type", "No. of Stirrups", "Cutting Length", "Total Weight", "Diameter"]
+            elif type_name in ["Top Steel", "Bottom Steel"]:
+                headers = ["Type", "Beam No.", "Bend len 1", "Bend len 2", "Quantity", "Length per bar", "Weight"]
+            elif type_name == "Cantilever":
+                headers = ["Type", "Beam No.", "-", "-", "Quantity", "Length per bar", "Weight"]
+            elif type_name == "Slab":
+                headers = ["Type", "Diameter", "-", "-", "Quantity", "Main bars", "Total Weight"]
+            
+            # Set headers for this section
+            for col, header in enumerate(headers):
+                header_item = QTableWidgetItem(header)
+                header_item.setFlags(header_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                #header_item.setBackground(QColor(200, 200, 200))  # Light gray
+                self.results_table.setItem(row, col, header_item)
+            
+            # Group by diameter within this type
+            diameter_groups = defaultdict(list)
+            for res in results_of_type:
+                if 'd' in res:
+                    diameter_groups[res["d"]].append(res)
+                elif 'diameter' in res:
+                    diameter_groups[res["diameter"]].append(res)
+                else:
+                    diameter_groups["N/A"].append(res)
+            
+            # Process each diameter group
+            for diameter in sorted(diameter_groups.keys(), key=lambda x: float(x) if str(x).replace('.','').isdigit() else 0):
+                # Add diameter subheader
                 row = self.results_table.rowCount()
                 self.results_table.insertRow(row)
-                # For Cantilever
-                if res.get("type") == "Cantilever":
-                    self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
-                    self.results_table.setItem(row, 1, QTableWidgetItem(str(res.get("beam no.", ""))))
-                    self.results_table.setItem(row, 2, QTableWidgetItem("-"))
-                    self.results_table.setItem(row, 3, QTableWidgetItem("-"))
-                    self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("quantity", ""))))
-                    self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("length per bar", ""))))
-                    self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("weight", ""))))
-                # For stirrups
-                elif res.get("spacing type") == "uniform":
-                    self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
-                    self.results_table.setItem(row, 1, QTableWidgetItem(str(res.get("beam no.", ""))))
-                    self.results_table.setItem(row, 2, QTableWidgetItem("-"))
-                    self.results_table.setItem(row, 3, QTableWidgetItem("-"))
-                    self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("quantity", ""))))
-                    self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("num_stirrups", ""))))
-                    self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("total_weight", ""))))
-                # For Top Steel
-                elif res.get("type") == "Top Steel":
-                    self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
-                    self.results_table.setItem(row, 1, QTableWidgetItem(str(res.get("beam no.", ""))))
-                    self.results_table.setItem(row, 2, QTableWidgetItem(str(res.get("bend length1", ""))))
-                    self.results_table.setItem(row, 3, QTableWidgetItem(str(res.get("bend length2", ""))))
-                    self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("quantity", ""))))
-                    self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("length per bar", ""))))
-                    self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("weight", ""))))
-                # For Bottom Steel
-                elif res.get("type") == "Bottom Steel":
-                    self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
-                    self.results_table.setItem(row, 1, QTableWidgetItem(str(res.get("beam no.", ""))))
-                    self.results_table.setItem(row, 2, QTableWidgetItem(str(res.get("bend length1", ""))))
-                    self.results_table.setItem(row, 3, QTableWidgetItem(str(res.get("bend length2", ""))))
-                    self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("quantity", ""))))
-                    self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("length per bar", ""))))
-                    self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("weight", ""))))
-                # For Slab
-                elif res.get("type") == "One-way":
-                    self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
-                    self.results_table.setItem(row, 1, QTableWidgetItem(str(res.get("diameter", ""))))
-                    self.results_table.setItem(row, 2, QTableWidgetItem("-"))
-                    self.results_table.setItem(row, 3, QTableWidgetItem("-"))
-                    self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("quantity", ""))))
-                    self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("main bars", ""))))
-                    self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("total weight", ""))))
+                diameter_header = QTableWidgetItem(f"    ○ Bar Diameter: {diameter} mm")
+                diameter_header.setFlags(diameter_header.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                #diameter_header.setBackground(QColor(240, 240, 240))  # Very light gray
+                self.results_table.setItem(row, 0, diameter_header)
+                self.results_table.setSpan(row, 0, 1, self.results_table.columnCount())
+                
+                # Add data rows for this diameter
+                for res in diameter_groups[diameter]:
+                    row = self.results_table.rowCount()
+                    self.results_table.insertRow(row)
+                    
+                    if type_name == "Stirrups":
+                        if res.get("spacing type") == "uniform":
+                            self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
+                            self.results_table.setItem(row, 1, QTableWidgetItem(get_beam_number(res)))
+                            self.results_table.setItem(row, 2, QTableWidgetItem("Uniform"))
+                            self.results_table.setItem(row, 3, QTableWidgetItem(str(res.get("num_stirrups", ""))))
+                            self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("cutting_len", ""))))
+                            self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("total_weight", ""))))
+                            self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("d", ""))))
+                        else:  # different spacing
+                            self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
+                            self.results_table.setItem(row, 1, QTableWidgetItem(get_beam_number(res)))
+                            self.results_table.setItem(row, 2, QTableWidgetItem("L/4 & L/2"))
+                            self.results_table.setItem(row, 3, QTableWidgetItem(f"L/4: {res.get('num_l/4_stirrups', '')}, L/2: {res.get('num_l/2_stirrups', '')}"))
+                            self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("cutting_len", ""))))
+                            self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("total_weight", ""))))
+                            self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("d", ""))))
+                    
+                    elif type_name in ["Top Steel", "Bottom Steel"]:
+                        self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
+                        self.results_table.setItem(row, 1, QTableWidgetItem(get_beam_number(res)))
+                        self.results_table.setItem(row, 2, QTableWidgetItem(str(res.get("bend length1", ""))))
+                        self.results_table.setItem(row, 3, QTableWidgetItem(str(res.get("bend length2", ""))))
+                        self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("quantity", ""))))
+                        self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("length per bar", ""))))
+                        self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("weight", ""))))
+                    
+                    elif type_name == "Cantilever":
+                        self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
+                        self.results_table.setItem(row, 1, QTableWidgetItem(get_beam_number(res)))
+                        self.results_table.setItem(row, 2, QTableWidgetItem("-"))
+                        self.results_table.setItem(row, 3, QTableWidgetItem("-"))
+                        self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("quantity", ""))))
+                        self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("length per bar", ""))))
+                        self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("weight", ""))))
+                    
+                    elif type_name == "Slab":
+                        self.results_table.setItem(row, 0, QTableWidgetItem(str(res.get("type", ""))))
+                        self.results_table.setItem(row, 1, QTableWidgetItem(str(res.get("diameter", ""))))
+                        self.results_table.setItem(row, 2, QTableWidgetItem("-"))
+                        self.results_table.setItem(row, 3, QTableWidgetItem("-"))
+                        self.results_table.setItem(row, 4, QTableWidgetItem(str(res.get("quantity", ""))))
+                        self.results_table.setItem(row, 5, QTableWidgetItem(str(res.get("main bars", ""))))
+                        self.results_table.setItem(row, 6, QTableWidgetItem(str(res.get("total weight", ""))))
+            
+            # Add spacing between type sections
+            row = self.results_table.rowCount()
+            self.results_table.insertRow(row)
+            spacer_item = QTableWidgetItem("")
+            spacer_item.setFlags(spacer_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.results_table.setItem(row, 0, spacer_item)
+            self.results_table.setSpan(row, 0, 1, self.results_table.columnCount())
 
     def add_result(self):
         # Top Steel
@@ -824,70 +901,61 @@ class MainWindow(QMainWindow):
             if not inputs:
                 QMessageBox.warning(self, "Input Error", "Please fill all fields with valid numbers.")
                 return
-            from math import floor
+            
             type_stirrup = inputs['type_stirrup']
             beam_num = inputs['beam_num']
             clear_span = float(inputs['clear_span'])
             beam_width = float(inputs['beam_width'])
             beam_depth = float(inputs['beam_depth'])
             diam_qty = inputs['diam_qty']
-            if type_stirrup == "1":
-                a = beam_width - 40
-                b = beam_depth - 40
-                cutting_len = 2*a + 2*b + 20*diam_qty[0][0] - 6*diam_qty[0][0] - 6*diam_qty[0][0]
-            elif type_stirrup == "2":
-                a = beam_depth - 40
-                b = beam_width - 40
-                cutting_len = floor(4*a + 2*b + 2*(b/3) + 16*diam_qty[0][0])
-            elif type_stirrup == "3":
-                a = beam_depth - 40
-                b = beam_width - 40
-                cutting_len = floor(6*a + 2*b + 4*b/5 + 24*diam_qty[0][0])
-            else:
-                QMessageBox.warning(self, "Input Error", "Invalid stirrup type.")
-                return
+            
+            stirrups_data = []
+            
             for d, qty in diam_qty:
                 if type_stirrup == "1":
+                    a = beam_width 
+                    b = beam_depth 
+                    cutting_len = 2*a + 2*b + 20*d - 6*d - 80
                     weight_bar = ((d*d)/162)*cutting_len
-                else:
-                    weight_bar = floor((d*d/162)*cutting_len)
-                if inputs['spacing_type'] == 'uniform':
-                    spacing = float(inputs['spacing'])
-                    num_stirrups = floor(clear_span/spacing)
-                    total_weight = num_stirrups*weight_bar*qty
-                    result = {
-                        "type": {"1": "Two legged", "2": "Four legged", "3": "Six legged"}[str(type_stirrup)],
-                        "beam no.": beam_num,
-                        "d": d,
-                        "num_stirrups": num_stirrups,
-                        "cutting_len": cutting_len,
-                        "total_weight": floor(total_weight/1000),
-                        "quantity": qty,
-                        "spacing type": "uniform"
-                    }
-                    self.results.append(result)
-                else:
-                    l4_spacing = float(inputs['l4_spacing'])
-                    l2_spacing = float(inputs['l2_spacing'])
-                    x = clear_span/4
-                    num_stirrups1 = floor((x/l4_spacing) + 1)
-                    z = clear_span/2
-                    num_stirrups2 = floor((z/l2_spacing) + 1)
-                    tweigth1 = weight_bar*num_stirrups1*2*qty
-                    tweigth2 = weight_bar*num_stirrups2*qty
-                    total_weight = tweigth2 + tweigth1
-                    result = {
-                        "type": {"1": "Two legged", "2": "Four legged", "3": "Six legged"}[str(type_stirrup)],
-                        "beam no.": beam_num,
-                        "d": d,
-                        "num_l/4_stirrups": num_stirrups1,
-                        "num_l/2_stirrups": num_stirrups2,
-                        "cutting_len": cutting_len,
-                        "total_weight": floor(total_weight/1000),
-                        "quantity": qty,
-                        "spacing type": "diff"
-                    }
-                    self.results.append(result)
+                    
+                    if inputs['spacing_type'] == 'uniform':
+                        spacing = float(inputs['spacing'])
+                        same_spacing(clear_span, spacing, weight_bar, stirrups_data, type_stirrup, beam_num, cutting_len, d)
+                    else:
+                        l4_spacing = float(inputs['l4_spacing'])
+                        l2_spacing = float(inputs['l2_spacing'])
+                        different_spacing(l4_spacing, clear_span, l2_spacing, weight_bar, stirrups_data, type_stirrup, d, beam_num, cutting_len)
+                
+                elif type_stirrup == "2":
+                    a = beam_depth 
+                    b = beam_width 
+                    cutting_len = math.floor(4*a + 2*b + 2*(b/3) + 16*d - 80)
+                    weight_bar = math.floor((d*d/162)*cutting_len)
+                    
+                    if inputs['spacing_type'] == 'uniform':
+                        spacing = float(inputs['spacing'])
+                        same_spacing(clear_span, spacing, weight_bar, stirrups_data, type_stirrup, beam_num, cutting_len, d)
+                    else:
+                        l4_spacing = float(inputs['l4_spacing'])
+                        l2_spacing = float(inputs['l2_spacing'])
+                        different_spacing(l4_spacing, clear_span, l2_spacing, weight_bar, stirrups_data, type_stirrup, d, beam_num, cutting_len)
+                
+                elif type_stirrup == "3":
+                    a = beam_depth 
+                    b = beam_width 
+                    cutting_len = math.floor(6*a + 2*b + 4*b/5 + 24*d - 80)
+                    weight_bar = math.floor((d*d/162)*cutting_len)
+                    
+                    if inputs['spacing_type'] == 'uniform':
+                        spacing = float(inputs['spacing'])
+                        same_spacing(clear_span, spacing, weight_bar, stirrups_data, type_stirrup, beam_num, cutting_len, d)
+                    else:
+                        l4_spacing = float(inputs['l4_spacing'])
+                        l2_spacing = float(inputs['l2_spacing'])
+                        different_spacing(l4_spacing, clear_span, l2_spacing, weight_bar, stirrups_data, type_stirrup, d, beam_num, cutting_len)
+            
+            # Add all stirrup results to main results
+            self.results.extend(stirrups_data)
             self.add_result_to_table(None)
             QMessageBox.information(self, "Success", "Stirrups result added.")
         # Slab

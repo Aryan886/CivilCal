@@ -63,9 +63,9 @@ def stirrup_flow():
 
         if type_stirrup == "1":
             choice = input("Is spacing diff? (y/n) : ")
-            a = beam_width - 40
-            b = beam_depth - 40
-            cutting_len = 2*a + 2*b + 20*d - 6*d - 6*d
+            a = beam_width 
+            b = beam_depth 
+            cutting_len = 2*a + 2*b + 20*d - 6*d - 80
             weight_bar = ((d*d)/162)*cutting_len
 
             if choice == "y":#spacing is diff
@@ -79,9 +79,9 @@ def stirrup_flow():
         
         elif type_stirrup == "2":
             choice = input("Is spacing diff? (y/n) : ")
-            a = beam_depth - 40
-            b =  beam_width - 40
-            cutting_len = math.floor(4*a + 2*b +2*(b/3) +16*d)
+            a = beam_depth 
+            b =  beam_width 
+            cutting_len = math.floor(4*a + 2*b +2*(b/3) +16*d - 80)
             weight_bar = math.floor((d*d/162)*cutting_len)
 
             #Repeating code block [try to make it into reusable func later]
@@ -95,9 +95,9 @@ def stirrup_flow():
         
         elif type_stirrup == "3":
             choice = input("Is spacing different (y/n) : ")
-            a = beam_depth - 40
-            b = beam_width - 40
-            cutting_len = math.floor(6*a + 2*b + 4*b/5 + 24*d)
+            a = beam_depth 
+            b = beam_width
+            cutting_len = math.floor(6*a + 2*b + 4*b/5 + 24*d - 80)
             weight_bar = math.floor((d*d/162)*cutting_len)
             if choice == "y":#spacing is diff
                 l4_spacing = get_input(prompt="Enter spacing for L/4 : ")
